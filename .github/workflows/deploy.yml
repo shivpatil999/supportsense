@@ -28,10 +28,18 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           ECR_REPO: ${{ secrets.ECR_REPO }}
         run: |
+          AWS_ACCOUNT_ID="$(echo -n "$AWS_ACCOUNT_ID" | tr -d '\r\n' | xargs)"
+          AWS_REGION="$(echo -n "$AWS_REGION" | tr -d '\r\n' | xargs)"
+          ECR_REPO="$(echo -n "$ECR_REPO" | tr -d '\r\n' | xargs)"
+
           IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+
+          echo "Using IMAGE_URI=${IMAGE_URI}"
+
           docker build -t supportsense:ci .
           docker tag supportsense:ci "${IMAGE_URI}:latest"
           docker push "${IMAGE_URI}:latest"
+
 
       - name: Redeploy ECS service (force new deployment)
         env:
