@@ -1,8 +1,8 @@
-import os
 import uuid
-
 import boto3
-from fastapi import FastAPI
+import os
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -10,27 +10,22 @@ from pydantic import BaseModel
 APP_NAME = os.getenv("APP_NAME", "SupportSense")
 ENV = os.getenv("ENV", "development")
 VERSION = os.getenv("VERSION", "0.1.0")
-DDB_TABLE = os.getenv("DDB_TABLE")
-
-if not DDB_TABLE:
-    raise RuntimeError("Missing environment variable DDB_TABLE")
 
 # --- DynamoDB ---
+TABLE_NAME = os.getenv("DDB_TABLE")
+
+if not TABLE_NAME:
+    raise RuntimeError("DDB_TABLE environment variable is not set")
+
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(DDB_TABLE)
+table = dynamodb.Table(TABLE_NAME)
 
 # --- App ---
 app = FastAPI(title=APP_NAME)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost",
-        "http://localhost:3000",
-        "http://127.0.0.1",
-        "http://127.0.0.1:3000",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -45,28 +40,32 @@ class Ticket(BaseModel):
 def health():
     return {"status": "ok"}
 
-@app.get("/config")
-def config():
-    return {"app_name": APP_NAME, "env": ENV, "version": VERSION, "ddb_table": DDB_TABLE}
-
 @app.post("/tickets")
 def create_ticket(ticket: Ticket):
     ticket_id = str(uuid.uuid4())
 
     item = {
-        "ticket_id": ticket_id,
+        "ticket_id": ticket_id,   # ✅ REQUIRED PARTITION KEY
         "title": ticket.title,
         "description": ticket.description,
         "status": "open",
     }
 
-    table.put_item(Item=item)
+    try:
+        table.put_item(Item=item)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    return {"message": "Ticket created successfully", "ticket": item}
+    return {
+        "message": "Ticket created successfully",
+        "ticket": item,
+    }
 
 @app.get("/tickets")
 def list_tickets():
     response = table.scan()
-    items = response.get("Items", [])
-    return {"count": len(items), "tickets": items}
+    return {
+        "count": len(response.get("Items", [])),
+        "tickets": response.get("Items", []),
+    }
 
