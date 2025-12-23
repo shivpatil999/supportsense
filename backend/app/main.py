@@ -1,4 +1,7 @@
 import os
+import uuid
+
+import boto3
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,6 +10,14 @@ from pydantic import BaseModel
 APP_NAME = os.getenv("APP_NAME", "SupportSense")
 ENV = os.getenv("ENV", "development")
 VERSION = os.getenv("VERSION", "0.1.0")
+DDB_TABLE = os.getenv("DDB_TABLE")
+
+if not DDB_TABLE:
+    raise RuntimeError("Missing environment variable DDB_TABLE")
+
+# --- DynamoDB ---
+dynamodb = boto3.resource("dynamodb")
+table = dynamodb.Table(DDB_TABLE)
 
 # --- App ---
 app = FastAPI(title=APP_NAME)
@@ -36,26 +47,26 @@ def health():
 
 @app.get("/config")
 def config():
-    return {
-        "app_name": APP_NAME,
-        "env": ENV,
-        "version": VERSION,
-    }
-
-tickets = []
+    return {"app_name": APP_NAME, "env": ENV, "version": VERSION, "ddb_table": DDB_TABLE}
 
 @app.post("/tickets")
 def create_ticket(ticket: Ticket):
-    tickets.append(ticket)
-    return {
-        "message": "Ticket created successfully",
-        "ticket": ticket
+    ticket_id = str(uuid.uuid4())
+
+    item = {
+        "ticket_id": ticket_id,
+        "title": ticket.title,
+        "description": ticket.description,
+        "status": "open",
     }
+
+    table.put_item(Item=item)
+
+    return {"message": "Ticket created successfully", "ticket": item}
 
 @app.get("/tickets")
 def list_tickets():
-    return {
-        "count": len(tickets),
-        "tickets": tickets
-    }
-# test ci
+    response = table.scan()
+    items = response.get("Items", [])
+    return {"count": len(items), "tickets": items}
+
