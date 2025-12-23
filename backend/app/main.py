@@ -11,7 +11,8 @@ APP_NAME = os.getenv("APP_NAME", "SupportSense")
 ENV = os.getenv("ENV", "development")
 
 # Bump this default so we can confirm the new container is running
-VERSION = os.getenv("VERSION", "0.1.1")
+VERSION = os.getenv("VERSION", "0.1.2")
+
 
 # --- DynamoDB ---
 TABLE_NAME = os.getenv("DDB_TABLE")
