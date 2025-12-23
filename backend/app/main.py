@@ -9,19 +9,23 @@ from pydantic import BaseModel
 # --- Config ---
 APP_NAME = os.getenv("APP_NAME", "SupportSense")
 ENV = os.getenv("ENV", "development")
-VERSION = os.getenv("VERSION", "0.1.0")
+
+# Bump this default so we can confirm the new container is running
+VERSION = os.getenv("VERSION", "0.1.1")
 
 # --- DynamoDB ---
 TABLE_NAME = os.getenv("DDB_TABLE")
+AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
 
 if not TABLE_NAME:
     raise RuntimeError("DDB_TABLE environment variable is not set")
 
-dynamodb = boto3.resource("dynamodb")
+# Make region explicit (avoids "wrong region" / default region issues)
+dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
 table = dynamodb.Table(TABLE_NAME)
 
 # --- App ---
-app = FastAPI(title=APP_NAME)
+app = FastAPI(title=APP_NAME, version=VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,7 +42,15 @@ class Ticket(BaseModel):
 # --- Routes ---
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    # This helps us confirm the deployed container is actually updated
+    return {
+        "status": "ok",
+        "app": APP_NAME,
+        "env": ENV,
+        "version": VERSION,
+        "table": TABLE_NAME,
+        "region": AWS_REGION,
+    }
 
 @app.post("/tickets")
 def create_ticket(ticket: Ticket):
@@ -68,4 +80,5 @@ def list_tickets():
         "count": len(response.get("Items", [])),
         "tickets": response.get("Items", []),
     }
+
 
