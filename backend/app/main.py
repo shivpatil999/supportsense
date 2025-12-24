@@ -12,7 +12,8 @@ from pydantic import BaseModel
 # --- Config ---
 APP_NAME = os.getenv("APP_NAME", "SupportSense")
 ENV = os.getenv("ENV", "development")
-VERSION = os.getenv("VERSION", "0.1.2")
+VERSION = os.getenv("VERSION", "0.1.3")
+
 
 # --- DynamoDB ---
 TABLE_NAME = os.getenv("DDB_TABLE")
