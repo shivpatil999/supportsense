@@ -1,5 +1,6 @@
 import os
 import uuid
+import traceback
 from datetime import datetime, timezone
 from typing import List, Literal
 
@@ -48,6 +49,7 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
+# NOTE: We'll tighten this later for production.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -60,15 +62,11 @@ app.add_middleware(
 # ------------------------------------------------------------------------------
 class TicketCreate(BaseModel):
     title: str = Field(..., example="Payment failed on checkout")
-    description: str = Field(
-        ..., example="Customer receives a 500 error after clicking Pay."
-    )
+    description: str = Field(..., example="Customer receives a 500 error after clicking Pay.")
 
 
 class TicketStatusUpdate(BaseModel):
-    status: Literal["open", "in_progress", "resolved"] = Field(
-        ..., example="resolved"
-    )
+    status: Literal["open", "in_progress", "resolved"] = Field(..., example="resolved")
 
 
 class Ticket(BaseModel):
@@ -134,7 +132,23 @@ def create_ticket(ticket: TicketCreate):
     try:
         table.put_item(Item=item)
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=e.response["Error"]["Message"])
+        err = e.response.get("Error", {})
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "aws_code": err.get("Code"),
+                "aws_message": err.get("Message"),
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "trace_tail": traceback.format_exc().splitlines()[-8:],
+            },
+        )
 
     return item
 
@@ -148,11 +162,28 @@ def create_ticket(ticket: TicketCreate):
 def list_tickets():
     try:
         response = table.scan()
-    except ClientError as e:
-        raise HTTPException(status_code=500, detail=e.response["Error"]["Message"])
+        items = response.get("Items", [])
+        return {"count": len(items), "tickets": items}
 
-    items = response.get("Items", [])
-    return {"count": len(items), "tickets": items}
+    except ClientError as e:
+        err = e.response.get("Error", {})
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "aws_code": err.get("Code"),
+                "aws_message": err.get("Message"),
+            },
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "trace_tail": traceback.format_exc().splitlines()[-8:],
+            },
+        )
 
 
 @app.get(
@@ -165,7 +196,23 @@ def get_ticket(ticket_id: str):
     try:
         resp = table.get_item(Key={"ticket_id": ticket_id})
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=e.response["Error"]["Message"])
+        err = e.response.get("Error", {})
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "aws_code": err.get("Code"),
+                "aws_message": err.get("Message"),
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "trace_tail": traceback.format_exc().splitlines()[-8:],
+            },
+        )
 
     item = resp.get("Item")
     if not item:
@@ -193,8 +240,24 @@ def update_ticket_status(ticket_id: str, update: TicketStatusUpdate):
             ReturnValues="ALL_NEW",
         )
     except ClientError as e:
-        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+        err = e.response.get("Error", {})
+        if err.get("Code") == "ConditionalCheckFailedException":
             raise HTTPException(status_code=404, detail="Ticket not found")
-        raise HTTPException(status_code=500, detail=e.response["Error"]["Message"])
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "aws_code": err.get("Code"),
+                "aws_message": err.get("Message"),
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "trace_tail": traceback.format_exc().splitlines()[-8:],
+            },
+        )
 
     return response["Attributes"]
